@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.WorkloadDetailRepository">
+	<!--
+	  工作量明细 Mapper
+	  功能说明：
+	  1) 工作量明细 CRUD（用于工作量录入/查询）
+	  2) 工作量统计聚合（用于画像算法、看板图表）
+	  3) 批处理辅助查询（历史数据补齐积分/画像）
+	-->
+
+	<!-- 添加工作量明细：useGeneratedKeys 让插入后自动回填 WorkloadDetail.id -->
+	<insert id="addWorkloadDetail"  parameterType="WorkloadDetail" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+		insert into biz_workload_detail (id,project_id,task_desc,time_spent_hrs,task_weight,quality_score,work_date,start_date,end_date,staff_id,created_time) 
+		values (null, #{projectId}, #{taskDesc}, #{timeSpentHrs}, #{taskWeight}, #{qualityScore}, #{startDate}, #{startDate}, #{endDate}, #{staffId}, now())
+	</insert>
+	<!--
+	  条件查询工作量明细（支持分页）
+	-->
+	<select id="selectWorkloadDetailByCon" resultType="WorkloadDetail"  parameterType="WorkloadDetailByCon">
+		select w.*, p.project_name, p.required_skills, p.max_staff_count, s.sname as staff_name
+		from biz_workload_detail w
+		left join biz_task_project p on w.project_id = p.id
+		left join hr_employee s on w.staff_id = s.id
+		where 1=1
+		<if test="projectId != null">
+			and w.project_id = #{projectId}
+		</if>
+		<if test="workDate != null">
+			and w.work_date = #{workDate}
+		</if>
+		<if test="startDate != null">
+			and w.work_date &gt;= #{startDate}
+		</if>
+		<if test="endDate != null">
+			and w.work_date &lt;= #{endDate}
+		</if>
+		<if test="staffId != null">
+			and w.staff_id = #{staffId}
+		</if>
+		order by w.work_date desc, w.created_time desc
+		<if test="act == 'byPage'" >
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+	<!-- 删除工作量明细（物理删除） -->
+	<delete id="deleteWorkloadDetail" parameterType="Integer">
+		delete from biz_workload_detail where id = #{id}
+	</delete>
+	<!--
+	  查询员工工作量统计（画像算法的主要输入）
+	  - eci_score：SUM(工时 * 难度 * 质量)，反映综合贡献
+	  - quality_scores_str / task_weight_history_str：按日期升序拼接，供 Java 侧解析成序列做趋势/学习能力
+	  - inferred_skill_tags：从项目 required_skills 反推技能标签（用于画像/标签展示）
+	-->
+	<select id="selectWorkloadStatsByStaffId" resultType="map" parameterType="Integer">
+		select 
+			count(*) as total_records,
+			COALESCE(SUM(time_spent_hrs), 0) as total_hours,
+			COALESCE(AVG(task_weight), 0) as avg_task_weight,
+			COALESCE(AVG(quality_score), 0) as avg_quality_score,
+			COALESCE(SUM(time_spent_hrs * task_weight * quality_score), 0) as eci_score,
+			CAST(GROUP_CONCAT(quality_score ORDER BY work_date ASC) AS CHAR) as quality_scores_str,
+			CAST(GROUP_CONCAT(task_weight ORDER BY work_date ASC) AS CHAR) as task_weight_history_str,
+			CAST(GROUP_CONCAT(CONCAT(work_date, ':', COALESCE(time_spent_hrs * task_weight * quality_score, 0)) ORDER BY work_date ASC) AS CHAR) as eci_history_str,
+			CAST(GROUP_CONCAT(DISTINCT tp.required_skills SEPARATOR ',') AS CHAR) as inferred_skill_tags
+		from biz_workload_detail wd
+		left join biz_task_project tp on wd.project_id = tp.id
+		where wd.staff_id = #{staffId}
+	</select>
+	
+	<!-- 查询工作量统计数据（用于页面统计卡片/筛选区间汇总） -->
+	<select id="selectStatistics" resultType="map">
+		SELECT 
+			COUNT(*) as task_count,
+			COALESCE(SUM(time_spent_hrs), 0) as total_hours,
+			COALESCE(AVG(task_weight), 0) as avg_task_weight,
+			COALESCE(AVG(quality_score), 0) as avg_quality,
+			COALESCE(SUM(time_spent_hrs * task_weight * quality_score), 0) as eci_score
+		FROM biz_workload_detail
+		WHERE 1=1
+		<if test="staffId != null">AND staff_id = #{staffId}</if>
+		<if test="projectId != null">AND project_id = #{projectId}</if>
+		<if test="startDate != null">AND work_date &gt;= #{startDate}</if>
+		<if test="endDate != null">AND work_date &lt;= #{endDate}</if>
+	</select>
+	
+	<!-- 查询热力图数据：按天聚合工时（date -> hours） -->
+	<select id="selectHeatmapData" resultType="map">
+		SELECT 
+			DATE_FORMAT(work_date, '%Y-%m-%d') as date,
+			SUM(time_spent_hrs) as hours
+		FROM biz_workload_detail
+		WHERE 1=1
+		<if test="staffId != null">AND staff_id = #{staffId}</if>
+		<if test="projectId != null">AND project_id = #{projectId}</if>
+		<if test="startDate != null">AND work_date &gt;= #{startDate}</if>
+		<if test="endDate != null">AND work_date &lt;= #{endDate}</if>
+		GROUP BY work_date
+		ORDER BY work_date
+	</select>
+	
+	<!-- 查询月度工作量统计数据：按月聚合工时与任务数 -->
+	<select id="selectMonthlyData" resultType="map">
+		SELECT 
+			DATE_FORMAT(work_date, '%Y年%m月') as month,
+			SUM(time_spent_hrs) as hours,
+			COUNT(*) as taskCount
+		FROM biz_workload_detail
+		WHERE 1=1
+		<if test="staffId != null">AND staff_id = #{staffId}</if>
+		<if test="projectId != null">AND project_id = #{projectId}</if>
+		<if test="startDate != null">AND work_date &gt;= #{startDate}</if>
+		<if test="endDate != null">AND work_date &lt;= #{endDate}</if>
+		GROUP BY DATE_FORMAT(work_date, '%Y-%m')
+		ORDER BY DATE_FORMAT(work_date, '%Y-%m')
+	</select>
+	
+	<!--
+	  查询甘特图数据
+	  目标：每个员工选出“耗时最长的任务”，输出任务起止日期与工时，供甘特图展示
+	  思路：t1 先按员工+任务聚合；t3 找出每个员工的 max_hours；最后 join 回 t1 取对应记录
+	-->
+	<select id="selectGanttData" resultType="map">
+		SELECT 
+			t1.staff_name,
+			t1.task_desc,
+			CONCAT(t1.staff_name, ' - ', t1.task_desc) as task_name,
+			t1.start_date,
+			t1.end_date,
+			t1.hours,
+			t1.task_count
+		FROM (
+			SELECT 
+				s.sname as staff_name,
+				w.task_desc as task_desc,
+				DATE_FORMAT(MIN(w.start_date), '%Y-%m-%d') as start_date,
+				DATE_FORMAT(MAX(w.end_date), '%Y-%m-%d') as end_date,
+				SUM(w.time_spent_hrs) as hours,
+				COUNT(w.id) as task_count,
+				w.staff_id
+			FROM biz_workload_detail w
+			LEFT JOIN hr_employee s ON w.staff_id = s.id
+			WHERE w.project_id = #{projectId}
+			GROUP BY w.staff_id, s.sname, w.task_desc
+		) t1
+		INNER JOIN (
+			SELECT 
+				staff_id,
+				MAX(total_hours) as max_hours
+			FROM (
+				SELECT 
+					staff_id,
+					task_desc,
+					SUM(time_spent_hrs) as total_hours
+				FROM biz_workload_detail
+				WHERE project_id = #{projectId}
+				GROUP BY staff_id, task_desc
+			) t2
+			GROUP BY staff_id
+		) t3 ON t1.staff_id = t3.staff_id AND t1.hours = t3.max_hours
+		ORDER BY t1.staff_name ASC
+	</select>
+	
+	<!--
+	  查询项目绩效数据：项目内按员工聚合工时与 ECI，用于项目绩效排行
+	  eci = SUM(工时 * 难度 * 质量)
+	-->
+	<select id="selectProjectPerformance" resultType="map">
+		SELECT 
+			w.staff_id as staffId,
+			s.sname as staffName,
+			p.pname as position,
+			SUM(w.time_spent_hrs) as hours,
+			SUM(w.time_spent_hrs * w.task_weight * w.quality_score) as eci
+		FROM biz_workload_detail w
+		LEFT JOIN hr_employee s ON w.staff_id = s.id
+		LEFT JOIN sys_post p ON s.post_id = p.id
+		WHERE w.project_id = #{projectId}
+		GROUP BY w.staff_id, s.sname, p.pname
+		ORDER BY eci DESC
+	</select>
+	
+	<!-- 查询所有工作量记录（用于历史数据批量补齐积分） -->
+	<select id="selectAllWorkloadDetails" resultType="WorkloadDetail">
+		SELECT * FROM biz_workload_detail
+		ORDER BY work_date DESC, created_time DESC
+	</select>
+	
+	<!-- 查询所有“有工作量但无有效画像”的员工ID（用于历史数据批量补齐画像） -->
+	<select id="selectStaffIdsWithoutImages" resultType="Integer">
+		SELECT DISTINCT w.staff_id
+		FROM biz_workload_detail w
+		WHERE w.staff_id NOT IN (
+			SELECT DISTINCT staff_id 
+			FROM hr_emp_image 
+			WHERE status = 1
+		)
+		ORDER BY w.staff_id
+	</select>
+</mapper>
+

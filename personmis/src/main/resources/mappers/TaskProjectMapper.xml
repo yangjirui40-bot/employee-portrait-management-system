@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.TaskProjectRepository">
+	<!--
+	  功能说明：分页/条件查询；删除前关联检查（项目被工作量引用则不可删除）
+
+	-->
+
+	<!-- 查询所有项目 -->
+	<select id="selectTaskProject"  resultType="TaskProject" parameterType="TaskProjectByCon">
+		select * from biz_task_project
+		<if test="act == 'byPage'" >
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+	<!-- 添加项目：required_skills 用于工作量录入与技能推断（画像标签） -->
+	<insert id="addTaskProject"  parameterType="TaskProject">
+		insert into biz_task_project (id,project_name,start_date,end_date,budgeted_hours,required_skills,max_staff_count) 
+		values (null, #{projectName}, #{startDate}, #{endDate}, #{budgetedHours}, #{requiredSkills}, #{maxStaffCount})
+	</insert>
+	<!-- 条件查询：按项目ID/项目名称过滤（可分页） -->
+	<select id="selectTaskProjectByCon" resultType="TaskProject"  parameterType="TaskProjectByCon">
+		select *
+		  from biz_task_project where 1=1
+		  <if test="projectId != null and projectId != 0">
+		  		and id = #{projectId}
+		  </if>
+		  <if test="projectName != null and projectName != ''">
+		  		and project_name like concat('%',#{projectName},'%') 
+		  </if>
+		<if test="act == 'byPage'" >
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+	<!-- 查询一个项目详情 -->
+	<select id="selectATaskProject" resultType="TaskProject" parameterType="Integer">
+		select * from  biz_task_project where id = #{id}
+	</select>
+	<!-- 修改项目：仅更新非空字段 -->
+	<update id="updateTaskProject" parameterType="TaskProject">
+		update biz_task_project
+		<set>
+			<if test="projectName != null">
+				project_name = #{projectName},
+			</if>
+			<if test="startDate != null">
+				start_date = #{startDate},
+			</if>
+			<if test="endDate != null">
+				end_date = #{endDate},
+			</if>
+			<if test="budgetedHours != null">
+				budgeted_hours = #{budgetedHours},
+			</if>
+			<if test="requiredSkills != null">
+				required_skills = #{requiredSkills},
+			</if>
+			<if test="maxStaffCount != null">
+				max_staff_count = #{maxStaffCount}
+			</if>
+		</set>
+		where id = #{id}
+	</update>
+	<!-- 查询关联项目：用于删除前校验（项目存在工作量记录则拒绝删除） -->
+	<select id="selectAssociateTaskProject" resultType="map" parameterType="Integer">
+		SELECT DISTINCT id from biz_workload_detail WHERE project_id = #{id}
+	</select>
+	<!-- 删除项目（物理删除） -->
+	<delete id="deleteTaskProject" parameterType="Integer">
+		delete from biz_task_project where id = #{id}
+	</delete>
+</mapper>
+

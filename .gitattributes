@@ -1,0 +1,11 @@
+* text=auto
+*.sh text eol=lf
+personmis/mvnw text eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.jar binary
+*.docx binary
+*.pptx binary
+*.mp4 binary

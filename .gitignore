@@ -1,0 +1,41 @@
+# Dependencies and generated output
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+target/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.cache/
+coverage/
+
+# Local tools and working-copy metadata
+.svn/
+.idea/
+.cursor/
+.vscode/
+*.iml
+*.log
+.DS_Store
+Thumbs.db
+~$*
+
+# Local credentials and solver licenses
+.env
+.env.*
+!.env.example
+!.env.*.example
+gurobi.lic
+*.pem
+*.key
+application-local.properties
+
+# Original assignment sheets and student-identified originals
+分工明细/
+**/*160224*
+
+# Keep the Maven wrapper needed for a fresh checkout
+!personmis/.mvn/wrapper/maven-wrapper.jar

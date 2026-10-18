@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.PointsRankingRepository">
+
+    <!--
+      积分排行榜 Mapper（独立的排行榜查询）
+      功能说明：
+      - 按员工聚合积分（EARN/USE），计算余额 current_balance 并排序
+      - 可选按时间段 startDate、按部门 departId 过滤
+      备注：这里对员工表要求 s.status='正常'（过滤异常/离职等状态）
+    -->
+
+    <!-- 积分排行榜查询：按 current_balance 降序，limit 控制返回前 N 名 -->
+    <select id="selectPointsRanking" resultType="map">
+        SELECT 
+            s.id as staff_id,
+            s.sname as staff_name,
+            s.depart_id,
+            d.dname as depart_name,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'EARN' THEN wp.points_value ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'USE' THEN wp.used_points ELSE 0 END), 0) as total_used,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'EARN' THEN wp.points_value ELSE 0 END) - 
+                     SUM(CASE WHEN wp.transaction_type = 'USE' THEN wp.used_points ELSE 0 END), 0) as current_balance,
+            COUNT(CASE WHEN wp.auto_generated = 1 THEN 1 END) as auto_earned_count,
+            MAX(wp.transaction_time) as last_earn_time
+        FROM hr_employee s
+        LEFT JOIN sys_department d ON s.depart_id = d.id
+        LEFT JOIN hr_welfare_points wp ON s.id = wp.staff_id AND wp.status = 1
+            <if test="startDate != null and startDate != ''">
+                AND wp.transaction_time &gt;= #{startDate}
+            </if>
+        WHERE s.status = '正常'
+        <if test="departId != null">
+            AND s.depart_id = #{departId}
+        </if>
+        GROUP BY s.id, s.sname, s.depart_id, d.dname
+        ORDER BY current_balance DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!--
+      查询个人排名
+      思路：子查询对 hr_welfare_points 按 staff_id 聚合后用窗口函数 RANK() 计算排名，再 join 回员工表取姓名/部门等信息
+      注意：窗口函数依赖 MySQL 8+（或兼容的数据库版本）
+    -->
+    <select id="selectMyRank" resultType="map">
+        SELECT 
+            s.id as staff_id,
+            s.sname as staff_name,
+            s.depart_id,
+            d.dname as depart_name,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'EARN' THEN wp.points_value ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'USE' THEN wp.used_points ELSE 0 END), 0) as total_used,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'EARN' THEN wp.points_value ELSE 0 END) - 
+                     SUM(CASE WHEN wp.transaction_type = 'USE' THEN wp.used_points ELSE 0 END), 0) as current_balance,
+            subquery.my_rank as rank
+        FROM hr_employee s
+        LEFT JOIN sys_department d ON s.depart_id = d.id
+        LEFT JOIN hr_welfare_points wp ON s.id = wp.staff_id AND wp.status = 1
+        LEFT JOIN (
+            SELECT 
+                staff_id,
+                RANK() OVER (ORDER BY 
+                    COALESCE(SUM(CASE WHEN transaction_type = 'EARN' THEN points_value ELSE 0 END), 0) - 
+                    COALESCE(SUM(CASE WHEN transaction_type = 'USE' THEN used_points ELSE 0 END), 0) DESC
+                ) as my_rank
+            FROM hr_welfare_points 
+            WHERE status = 1
+            GROUP BY staff_id
+        ) subquery ON s.id = subquery.staff_id
+        WHERE s.id = #{staffId} AND s.status = '正常'
+        GROUP BY s.id, s.sname, s.depart_id, d.dname, subquery.my_rank
+    </select>
+
+</mapper>

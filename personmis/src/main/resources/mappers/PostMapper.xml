@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+		PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+		"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.PostRepository">
+	<!--
+	  岗位 Mapper
+	  功能说明：岗位 CRUD + 分页/条件查询；删除前关联检查（员工表/调动表引用）
+	  约定：act == 'byPage' 时追加 limit
+	-->
+
+	<!-- 查询所有岗位（可分页） -->
+	<select id="selectPost"  resultType="Post" parameterType="PostByCon">
+		select * from sys_post
+		<if test="act == 'byPage'" >
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+	<!-- 添加岗位 -->
+	<insert id="addPost"  parameterType="Post">
+		insert into sys_post (id,pname,ptype,organization,post_level,requirements) values (null, #{pname}, #{ptype}, #{organization}, #{post_level}, #{requirements})
+	</insert>
+	<!-- 条件查询（按名称/类型过滤，可分页） -->
+	<select id="selectPostByCon" resultType="Post"  parameterType="PostByCon">
+		select *
+		from sys_post where 1=1
+		<if test="pname != null and pname != ''">
+			and pname like concat('%',#{pname},'%')
+		</if>
+		<if test="ptype != null and ptype != ''">
+			and ptype = #{ptype}
+		</if>
+		<if test="act == 'byPage'" >
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+	<!-- 查询一个岗位详情 -->
+	<select id="selectAPost" resultType="Post" parameterType="Integer">
+		select * from  sys_post where id = #{id}
+	</select>
+	<!-- 修改岗位：仅更新非空字段 -->
+	<update id="updatePost" parameterType="Post">
+		update sys_post
+		<set>
+			<if test="pname != null">pname = #{pname},</if>
+			<if test="ptype != null">ptype = #{ptype},</if>
+			<if test="organization != null">organization = #{organization},</if>
+			<if test="post_level != null">post_level = #{post_level},</if>
+			<if test="requirements != null">requirements = #{requirements}</if>
+		</set>
+		where id = #{id}
+	</update>
+	<!-- 查询关联岗位：用于删除前校验（岗位被员工或调动记录引用时不可删除） -->
+	<select id="selectAssociatePost" resultType="map" parameterType="Integer">
+		SELECT DISTINCT s.id, t.id  from hr_employee s, transfer t WHERE
+			s.post_id = #{id} or t.beforepost_id = #{id} or t.afterpost_id = #{id}
+	</select>
+	<!-- 删除岗位（物理删除） -->
+	<delete id="deletePost" parameterType="Integer">
+		delete from sys_post where id = #{id}
+	</delete>
+</mapper>

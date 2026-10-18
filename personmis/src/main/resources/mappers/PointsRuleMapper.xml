@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.PointsRuleRepository">
+    <!--
+      积分规则 Mapper
+      功能说明：
+      提供“积分规则引擎”的规则来源查询。
+    -->
+    
+    <!-- 查询所有启用的规则：按规则类型 + 积分值倒序，便于优先匹配高奖励规则 -->
+    <select id="selectActiveRules" resultType="PointsRule">
+        SELECT id, rule_name as ruleName, rule_type as ruleType, 
+               trigger_condition as triggerCondition, points_value as pointsValue,
+               description, status
+        FROM hr_points_rule
+        WHERE status = 1
+        ORDER BY rule_type, points_value DESC
+    </select>
+    
+    <!-- 根据类型查询规则：用于规则管理/调试查看某类规则阈值与积分配置 -->
+    <select id="selectRulesByType" resultType="PointsRule">
+        SELECT id, rule_name as ruleName, rule_type as ruleType, 
+               trigger_condition as triggerCondition, points_value as pointsValue,
+               description, status
+        FROM hr_points_rule
+        WHERE status = 1 AND rule_type = #{ruleType}
+        ORDER BY points_value DESC
+    </select>
+    
+    <!-- 根据ID查询规则：用于规则详情查看 -->
+    <select id="selectRuleById" resultType="PointsRule">
+        SELECT id, rule_name as ruleName, rule_type as ruleType, 
+               trigger_condition as triggerCondition, points_value as pointsValue,
+               description, status
+        FROM hr_points_rule
+        WHERE id = #{id}
+    </select>
+    
+</mapper>
+

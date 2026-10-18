@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.EmpImageRepository">
+    <!--
+      员工画像 Mapper
+      功能说明：
+      1) 保存/更新画像
+      2) 查询画像
+    -->
+
+    <!--
+      添加画像数据
+    -->
+    <insert id="addEmpImage" parameterType="EmpImage">
+        insert into hr_emp_image (
+            staff_id, image_type, ability_score,
+            performance_level, skill_tags, work_style, career_orientation, risk_level,
+            model_version, status,
+            tech_ability, workload_ability, quality_ability, contribution_ability, stability_ability,
+            performance_trend, learning_ability, growth_speed, incentive_response, promotion_probability, retention_risk
+        ) values (
+                     #{staff_id}, #{image_type}, #{ability_score},
+                     #{performance_level}, #{skill_tags}, #{work_style}, #{career_orientation}, #{risk_level},
+                     #{model_version}, #{status},
+                     #{tech_ability}, #{workload_ability}, #{quality_ability}, #{contribution_ability}, #{stability_ability},
+                     #{performance_trend}, #{learning_ability}, #{growth_speed}, #{incentive_response}, #{promotion_probability}, #{retention_risk}
+                 )
+        ON DUPLICATE KEY UPDATE
+            ability_score = VALUES(ability_score),
+            performance_level = VALUES(performance_level),
+            skill_tags = VALUES(skill_tags),
+            work_style = VALUES(work_style),
+            career_orientation = VALUES(career_orientation),
+            risk_level = VALUES(risk_level),
+            model_version = VALUES(model_version),
+            tech_ability = VALUES(tech_ability),
+            workload_ability = VALUES(workload_ability),
+            quality_ability = VALUES(quality_ability),
+            contribution_ability = VALUES(contribution_ability),
+            stability_ability = VALUES(stability_ability),
+            performance_trend = VALUES(performance_trend),
+            learning_ability = VALUES(learning_ability),
+            growth_speed = VALUES(growth_speed),
+            incentive_response = VALUES(incentive_response),
+            promotion_probability = VALUES(promotion_probability),
+            retention_risk = VALUES(retention_risk),
+            updated_time = NOW()
+    </insert>
+
+    <!-- 更新画像数据：仅更新非空字段，避免覆盖为 null -->
+    <update id="updateEmpImage" parameterType="EmpImage">
+        update hr_emp_image
+        <set>
+            <if test="image_type != null and image_type != ''">image_type = #{image_type},</if>
+            <if test="ability_score != null">ability_score = #{ability_score},</if>
+            <if test="tech_ability != null">tech_ability = #{tech_ability},</if>
+            <if test="workload_ability != null">workload_ability = #{workload_ability},</if>
+            <if test="quality_ability != null">quality_ability = #{quality_ability},</if>
+            <if test="contribution_ability != null">contribution_ability = #{contribution_ability},</if>
+            <if test="stability_ability != null">stability_ability = #{stability_ability},</if>
+            <if test="performance_trend != null">performance_trend = #{performance_trend},</if>
+            <if test="learning_ability != null">learning_ability = #{learning_ability},</if>
+            <if test="growth_speed != null">growth_speed = #{growth_speed},</if>
+            <if test="incentive_response != null">incentive_response = #{incentive_response},</if>
+            <if test="promotion_probability != null">promotion_probability = #{promotion_probability},</if>
+            <if test="retention_risk != null">retention_risk = #{retention_risk},</if>
+            <if test="performance_level != null">performance_level = #{performance_level},</if>
+            <if test="skill_tags != null">skill_tags = #{skill_tags},</if>
+            <if test="work_style != null">work_style = #{work_style},</if>
+            <if test="career_orientation != null">career_orientation = #{career_orientation},</if>
+            <if test="risk_level != null">risk_level = #{risk_level},</if>
+            <if test="model_version != null">model_version = #{model_version},</if>
+            updated_time = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <!-- 根据ID查询画像数据：带员工姓名/身份证号 + 时间字段 -->
+    <select id="selectEmpImageById" resultMap="EmpImageResult" parameterType="Integer">
+        select ei.*, s.sname, s.sid,
+               ei.tech_ability, ei.workload_ability, ei.quality_ability, 
+               ei.contribution_ability, ei.stability_ability,
+               ei.performance_trend, ei.learning_ability, ei.growth_speed,
+               ei.incentive_response, ei.promotion_probability, ei.retention_risk,
+               DATE_FORMAT(ei.created_time,'%Y-%m-%d %H:%i:%s') as created_time1,
+               DATE_FORMAT(ei.updated_time,'%Y-%m-%d %H:%i:%s') as updated_time1
+        from hr_emp_image ei
+                 left join hr_employee s on ei.staff_id = s.id
+        where ei.id = #{id} and (ei.status = 1 or ei.status is null)
+    </select>
+
+    <!-- 查询员工指定类型的最新画像 -->
+    <select id="selectEmpImageByStaffIdAndTypeLimit" resultMap="EmpImageResult">
+        select ei.*, s.sname, s.sid,
+               ei.tech_ability, ei.workload_ability, ei.quality_ability, 
+               ei.contribution_ability, ei.stability_ability,
+               ei.performance_trend, ei.learning_ability, ei.growth_speed,
+               ei.incentive_response, ei.promotion_probability, ei.retention_risk,
+               DATE_FORMAT(ei.created_time,'%Y-%m-%d %H:%i:%s') as created_time1,
+               DATE_FORMAT(ei.updated_time,'%Y-%m-%d %H:%i:%s') as updated_time1
+        from hr_emp_image ei
+                 left join hr_employee s on ei.staff_id = s.id
+        where ei.staff_id = #{staff_id} and (ei.status = 1 or ei.status is null) and ei.image_type = #{image_type}
+        order by ei.created_time desc
+        limit #{limit}
+    </select>
+
+    <!-- 根据员工ID查询画像列表 -->
+    <select id="selectEmpImageByStaffId" resultMap="EmpImageResult" parameterType="Integer">
+        select ei.*, s.sname, s.sid,
+               ei.tech_ability, ei.workload_ability, ei.quality_ability, 
+               ei.contribution_ability, ei.stability_ability,
+               ei.performance_trend, ei.learning_ability, ei.growth_speed,
+               ei.incentive_response, ei.promotion_probability, ei.retention_risk,
+               DATE_FORMAT(ei.created_time,'%Y-%m-%d %H:%i:%s') as created_time1,
+               DATE_FORMAT(ei.updated_time,'%Y-%m-%d %H:%i:%s') as updated_time1
+        from hr_emp_image ei
+                 left join hr_employee s on ei.staff_id = s.id
+        where ei.staff_id = #{staff_id} and (ei.status = 1 or ei.status is null)
+        order by ei.created_time desc
+    </select>
+
+    <!-- 统一结果映射，避免字段名大小写/下划线问题 -->
+    <resultMap id="EmpImageResult" type="EmpImage">
+        <id column="id" property="id"/>
+        <result column="staff_id" property="staff_id"/>
+        <result column="image_type" property="image_type"/>
+        <result column="ability_score" property="ability_score"/>
+        <result column="tech_ability" property="tech_ability"/>
+        <result column="workload_ability" property="workload_ability"/>
+        <result column="quality_ability" property="quality_ability"/>
+        <result column="contribution_ability" property="contribution_ability"/>
+        <result column="stability_ability" property="stability_ability"/>
+        <result column="performance_trend" property="performance_trend"/>
+        <result column="learning_ability" property="learning_ability"/>
+        <result column="growth_speed" property="growth_speed"/>
+        <result column="incentive_response" property="incentive_response"/>
+        <result column="promotion_probability" property="promotion_probability"/>
+        <result column="retention_risk" property="retention_risk"/>
+        <result column="performance_level" property="performance_level"/>
+        <result column="skill_tags" property="skill_tags"/>
+        <result column="work_style" property="work_style"/>
+        <result column="career_orientation" property="career_orientation"/>
+        <result column="risk_level" property="risk_level"/>
+        <result column="model_version" property="model_version"/>
+        <result column="status" property="status"/>
+        <result column="created_time" property="created_time"/>
+        <result column="updated_time" property="updated_time"/>
+        <result column="created_time1" property="created_time1"/>
+        <result column="updated_time1" property="updated_time1"/>
+        <result column="sname" property="sname"/>
+        <result column="sid" property="sid"/>
+    </resultMap>
+
+    <!-- 分页查询画像数据 -->
+    <select id="selectEmpImageByPage" resultMap="EmpImageResult" parameterType="EmpImage">
+        select ei.id, ei.staff_id, ei.image_type,
+               ei.ability_score, ei.performance_level,
+               COALESCE(ei.skill_tags, s.skill_tags) as skill_tags, ei.work_style, ei.career_orientation, ei.risk_level,
+               ei.model_version, ei.status,
+               ei.created_time, ei.updated_time,
+               ei.tech_ability, ei.workload_ability, ei.quality_ability,
+               ei.contribution_ability, ei.stability_ability,
+               ei.performance_trend, ei.learning_ability, ei.growth_speed,
+               ei.incentive_response, ei.promotion_probability, ei.retention_risk,
+               s.sname, s.sid,
+               DATE_FORMAT(ei.created_time,'%Y-%m-%d %H:%i:%s') as created_time1,
+               DATE_FORMAT(ei.updated_time,'%Y-%m-%d %H:%i:%s') as updated_time1
+        from hr_emp_image ei
+        left join hr_employee s on ei.staff_id = s.id
+        where (ei.status = 1 or ei.status is null)
+        <if test="image_type != null and image_type != ''">
+            and ei.image_type = #{image_type}
+        </if>
+        <if test="act == 'byPage'">
+            order by ei.created_time desc
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+
+    <!-- 条件查询画像数据 -->
+    <select id="selectEmpImageByCon" resultMap="EmpImageResult" parameterType="EmpImage">
+        select ei.id, ei.staff_id, ei.image_type,
+               ei.ability_score, ei.performance_level,
+               COALESCE(ei.skill_tags, s.skill_tags) as skill_tags, ei.work_style, ei.career_orientation, ei.risk_level,
+               ei.model_version, ei.status,
+               ei.created_time, ei.updated_time,
+               ei.tech_ability, ei.workload_ability, ei.quality_ability,
+               ei.contribution_ability, ei.stability_ability,
+               ei.performance_trend, ei.learning_ability, ei.growth_speed,
+               ei.incentive_response, ei.promotion_probability, ei.retention_risk,
+               s.sname, s.sid,
+               DATE_FORMAT(ei.created_time,'%Y-%m-%d %H:%i:%s') as created_time1,
+               DATE_FORMAT(ei.updated_time,'%Y-%m-%d %H:%i:%s') as updated_time1
+        from hr_emp_image ei
+        left join hr_employee s on ei.staff_id = s.id
+        where (ei.status = 1 or ei.status is null)
+        <if test="staff_id != null and staff_id != 0">
+            and ei.staff_id = #{staff_id}
+        </if>
+        <if test="image_type != null and image_type != ''">
+            and ei.image_type = #{image_type}
+        </if>
+        <if test="sname != null and sname != ''">
+            and s.sname like concat('%',#{sname},'%')
+        </if>
+        <if test="performance_level != null and performance_level != ''">
+            and ei.performance_level = #{performance_level}
+        </if>
+        <if test="act == 'byPage'">
+            order by ei.created_time desc
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+
+    <!-- 删除画像数据（逻辑删除） -->
+    <update id="deleteEmpImage" parameterType="Integer">
+        update hr_emp_image
+        set status = 0, updated_time = now()
+        where id = #{id}
+    </update>
+
+    <!-- 统计画像数量：配合分页/条件查询使用 -->
+    <select id="countEmpImage" resultType="int" parameterType="EmpImage">
+        select count(*)
+        from hr_emp_image ei
+        left join hr_employee s on ei.staff_id = s.id
+        where (ei.status = 1 or ei.status is null)
+        <if test="staff_id != null and staff_id != 0">
+            and ei.staff_id = #{staff_id}
+        </if>
+        <if test="image_type != null and image_type != ''">
+            and ei.image_type = #{image_type}
+        </if>
+        <if test="sname != null and sname != ''">
+            and s.sname like concat('%',#{sname},'%')
+        </if>
+    </select>
+</mapper>
+

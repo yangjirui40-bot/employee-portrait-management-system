@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+		PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+		"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.DepartRepository">
+	<!--
+	  部门 Mapper
+	  功能说明：
+	  - 部门 
+	  - 部门工作量统计/汇总/趋势（用于部门看板）
+	-->
+
+	<!-- 获取部门工作量统计 -->
+	<select id="getDepartmentWorkloadStats" resultType="map">
+		SELECT
+			d.id,
+			d.dname,
+			d.dtype,
+			COUNT(DISTINCT e.id) as employee_count,
+			COALESCE(SUM(w.time_spent_hrs * w.task_weight), 0) as total_workload,
+			COALESCE(SUM(CASE WHEN w.work_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+								  THEN w.time_spent_hrs * w.task_weight ELSE 0 END), 0) as monthly_workload,
+			COALESCE(AVG(w.quality_score), 0) as avg_quality_score
+		FROM sys_department d
+				 LEFT JOIN hr_employee e ON d.id = e.depart_id
+				 LEFT JOIN biz_workload_detail w ON e.id = w.staff_id
+		GROUP BY d.id, d.dname, d.dtype
+		ORDER BY total_workload DESC
+	</select>
+
+	<!-- 获取部门工作量汇总 -->
+	<select id="getDepartmentWorkloadSummary" resultType="map">
+		SELECT
+			(SELECT COUNT(DISTINCT id) FROM sys_department) as total_departments,
+			(SELECT COUNT(DISTINCT id) FROM hr_employee) as total_employees,
+			COALESCE((SELECT SUM(time_spent_hrs * task_weight) FROM biz_workload_detail), 0) as total_workload_hours,
+			COALESCE((SELECT AVG(quality_score) FROM biz_workload_detail WHERE quality_score IS NOT NULL), 0) as avg_quality_score,
+			COALESCE((SELECT MAX(dept_workload) FROM (
+				SELECT 
+					d.id,
+					COALESCE(SUM(w.time_spent_hrs * w.task_weight), 0) as dept_workload
+				FROM sys_department d
+				LEFT JOIN hr_employee e ON d.id = e.depart_id
+				LEFT JOIN biz_workload_detail w ON e.id = w.staff_id
+				GROUP BY d.id
+			) dept_stats), 0) as max_department_workload,
+			COALESCE((SELECT d.dname 
+			 FROM sys_department d
+			 LEFT JOIN hr_employee e ON d.id = e.depart_id
+			 LEFT JOIN biz_workload_detail w ON e.id = w.staff_id
+			 GROUP BY d.id, d.dname
+			 HAVING SUM(w.time_spent_hrs * w.task_weight) IS NOT NULL
+			 ORDER BY SUM(w.time_spent_hrs * w.task_weight) DESC
+			 LIMIT 1), '暂无') as top_department
+	</select>
+
+	<!-- 获取部门工作量趋势 -->
+	<select id="getDepartmentWorkloadTrend" parameterType="int" resultType="map">
+		SELECT
+			DATE_FORMAT(w.work_date, '%Y-%m') as month,
+        SUM(w.time_spent_hrs * w.task_weight) as monthly_workload,
+        COUNT(DISTINCT w.id) as task_count,
+        AVG(w.quality_score) as avg_quality
+		FROM hr_employee e
+			JOIN biz_workload_detail w ON e.id = w.staff_id
+		WHERE e.depart_id = #{departmentId}
+		  AND w.work_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+		GROUP BY DATE_FORMAT(w.work_date, '%Y-%m')
+		ORDER BY month
+	</select>
+	<!-- 查询所有部门 -->
+	<select id="selectDepart" resultType="Depart" parameterType="DepartByCon">
+		select d1.id,d1.dname,d1.dtype,d1.dtel,d1.dfax,d1.description,
+		d1.supdepartment,
+		COALESCE(d2.dname,'顶级部门') as supdepartment1,
+		date_format(d1.establishmentdate,'%Y-%m-%d') as establishmentdate1,
+		d1.parent_id,d1.order_num,d1.leader_id
+		from sys_department d1
+		left join sys_department d2 on COALESCE(d1.parent_id, d1.supdepartment) = d2.id
+		<if test="act == 'byPage'">
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+
+	<!-- 条件查询部门 -->
+	<select id="selectDepartmentsByCon" resultType="Depart" parameterType="DepartByCon">
+		select d1.id,d1.dname,d1.dtype,d1.dtel,d1.dfax,d1.description,
+		d1.supdepartment,
+		COALESCE(d2.dname,'顶级部门') as supdepartment1,
+		date_format(d1.establishmentdate,'%Y-%m-%d') as establishmentdate1,
+		d1.parent_id,d1.order_num,d1.leader_id
+		from sys_department d1
+		left join sys_department d2 on COALESCE(d1.parent_id, d1.supdepartment) = d2.id
+		where 1=1
+		<if test="dname != null and dname != ''">
+			and d1.dname like concat('%',#{dname},'%')
+		</if>
+		<if test="dtype != null and dtype != ''">
+			and d1.dtype = #{dtype}
+		</if>
+		<if test="act == 'byPage'">
+			limit #{startIndex}, #{pageSize}
+		</if>
+	</select>
+
+	<!-- 添加部门 -->
+	<insert id="addDepart" parameterType="Depart">
+		insert into sys_department (id,dname,dtype,dtel,dfax,description,supdepartment,establishmentdate,parent_id,order_num,leader_id)
+		values (null, #{dname}, #{dtype}, #{dtel}, #{dfax}, #{description}, #{supdepartment}, now(), #{parent_id}, #{order_num}, #{leader_id})
+	</insert>
+
+	<!-- 查询一个部门 -->
+	<select id="getDepartmentDetail" resultType="Depart" parameterType="Integer">
+		select d1.id,d1.dname,d1.dtype,d1.dtel,d1.dfax,d1.description,
+			   d1.supdepartment,
+			   COALESCE(d2.dname,'顶级部门') as supdepartment1,
+			   date_format(d1.establishmentdate,'%Y-%m-%d') as establishmentdate1,
+			   d1.parent_id,d1.order_num,d1.leader_id
+		from sys_department d1
+				 left join sys_department d2 on COALESCE(d1.parent_id, d1.supdepartment) = d2.id
+		where d1.id = #{id}
+	</select>
+
+	<!-- 修改部门 -->
+	<update id="updateDepartment" parameterType="Depart">
+		update sys_department
+		<set>
+			<if test="dname != null">dname = #{dname},</if>
+			<if test="dtype != null">dtype = #{dtype},</if>
+			<if test="dtel != null">dtel = #{dtel},</if>
+			<if test="dfax != null">dfax = #{dfax},</if>
+			<if test="description != null">description = #{description},</if>
+			<if test="supdepartment != null">supdepartment = #{supdepartment},</if>
+			<if test="parent_id != null">parent_id = #{parent_id},</if>
+			<if test="order_num != null">order_num = #{order_num},</if>
+			<if test="leader_id != null">leader_id = #{leader_id}</if>
+		</set>
+		where id = #{id}
+	</update>
+
+	<!-- 查询关联部门 -->
+	<select id="selectAssociateDepart" resultType="map" parameterType="Integer">
+		SELECT DISTINCT d.id, s.id
+		FROM sys_department d
+				 LEFT JOIN staff s ON s.depart_id = d.id
+		WHERE d.supdepartment = #{id} OR s.depart_id = #{id}
+	</select>
+
+	<!-- 删除部门 -->
+	<delete id="deleteDepart" parameterType="Integer">
+		delete from sys_department where id = #{id}
+	</delete>
+
+	<!-- 获取部门岗位信息 -->
+	<select id="getDepartmentPosts" parameterType="int" resultType="map">
+		SELECT 
+			p.id,
+			p.pname,
+			p.ptype,
+			p.post_level,
+			p.organization,
+			p.requirements,
+			COUNT(DISTINCT e.id) as employee_count
+		FROM sys_post p
+		LEFT JOIN hr_employee e ON p.id = e.post_id AND e.depart_id = #{departmentId}
+		WHERE EXISTS (
+			SELECT 1 FROM hr_employee e2 
+			WHERE e2.depart_id = #{departmentId} AND e2.post_id = p.id
+		)
+		GROUP BY p.id, p.pname, p.ptype, p.post_level, p.organization, p.requirements
+		ORDER BY p.id
+	</select>
+</mapper>

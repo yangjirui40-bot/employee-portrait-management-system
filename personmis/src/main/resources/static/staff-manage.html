@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>员工管理 - 试用期与岗位调动</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;padding:16px}
+    h2{margin-top:24px}
+    .panel{border:1px solid #ddd;padding:12px;margin-bottom:18px;border-radius:6px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border:1px solid #eee;text-align:left;vertical-align:middle}
+    /* 视觉优化 */
+    .table-striped tbody tr:nth-child(odd){background:#fafafa}
+    table tbody tr:hover{background:#f1f8ff}
+    th{background:#f7f9fc}
+    th.sortable{cursor:pointer;position:relative;padding-right:22px}
+    /* 排序箭头（默认灰色） */
+    th.sortable::after{content:'▽';position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:#bbb}
+    th.sorted.asc::after{content:'△';color:#1976d2}
+    th.sorted.desc::after{content:'▽';color:#1976d2}
+    td .ellipsis{display:inline-block;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .table-container{overflow:auto;border-radius:6px}
+    /* 粘性表头 */
+    thead th{position:sticky;top:0;z-index:2}
+    /* 按钮微调 */
+    .btn{border:none}
+    .btn.secondary{background:#6c757d}
+    @media (max-width:800px){
+      .controls label{display:block;margin-bottom:6px}
+      td .ellipsis{max-width:120px}
+    }
+    .controls{margin-bottom:8px}
+    .btn{display:inline-block;padding:6px 10px;background:#1976d2;color:#fff;border-radius:4px;text-decoration:none;cursor:pointer}
+    .btn.secondary{background:#666}
+    .form-row{margin:6px 0}
+    input,select{padding:6px;border:1px solid #ccc;border-radius:4px}
+    label{margin-right:8px}
+  </style>
+</head>
+<body>
+  <h1>员工管理 — 试用期与岗位调动</h1>
+
+  <div class="panel" id="period-panel">
+    <h2>试用期管理</h2>
+    <div class="controls">
+      <label>姓名 <input id="p-sname"></label>
+      <label>部门ID <input type="number" id="p-depart" style="width:80px"></label>
+      <label>岗位ID <input type="number" id="p-post" style="width:80px"></label>
+      <label>开始 <input type="date" id="p-start"></label>
+      <label>结束 <input type="date" id="p-end"></label>
+      <label>状态
+        <select id="p-status">
+          <option value="">所有</option>
+          <option value="正常">正常</option>
+        </select>
+      </label>
+      <label>每页
+        <select id="p-pageSize" style="width:80px"><option>5</option><option selected>10</option><option>20</option></select>
+      </label>
+      <button class="btn" id="refresh-periods">查询</button>
+    </div>
+    <div class="table-container">
+    <table id="period-table" class="table-striped">
+      <thead>
+        <tr>
+          <th class="sortable" data-key="id">ID</th>
+          <th class="sortable" data-key="sname">姓名</th>
+          <th class="sortable" data-key="post_name">岗位</th>
+          <th class="sortable" data-key="startdate1">开始时间</th>
+          <th class="sortable" data-key="enddate1">结束时间</th>
+          <th class="sortable" data-key="status">状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn" id="p-prev">上一页</button>
+      <span id="p-page-info">第 1 页</span>
+      <button class="btn" id="p-next">下一页</button>
+    </div>
+  </div>
+
+  <div class="panel" id="transfer-panel">
+    <h2>岗位调动</h2>
+    <div class="controls">
+      <label>姓名 <input id="t-sname-filter"></label>
+      <label>员工ID <input type="number" id="t-staff-filter" style="width:80px"></label>
+      <label>类型 <select id="t-ttype"><option value="">所有</option><option>调动</option><option>晋升</option></select></label>
+      <label>每页
+        <select id="t-pageSize" style="width:80px"><option>5</option><option selected>10</option><option>20</option></select>
+      </label>
+      <button class="btn" id="refresh-transfers">查询</button>
+    </div>
+    <div class="table-container">
+    <table id="transfer-table" class="table-striped">
+      <thead>
+        <tr>
+          <th class="sortable" data-key="id">ID</th>
+          <th class="sortable" data-key="sname">姓名</th>
+          <th class="sortable" data-key="beforepost_name">原岗位</th>
+          <th class="sortable" data-key="afterpost_name">目标岗位</th>
+          <th class="sortable" data-key="ttype">类型</th>
+          <th class="sortable" data-key="tdate1">调动时间</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn" id="t-prev">上一页</button>
+      <span id="t-page-info">第 1 页</span>
+      <button class="btn" id="t-next">下一页</button>
+    </div>
+
+    <h3 style="margin-top:12px">新增调动</h3>
+    <div>
+      <div class="form-row"><label>员工ID <input type="number" id="t-staff-id"></label></div>
+      <div class="form-row"><label>姓名 <input id="t-sname"></label></div>
+      <div class="form-row"><label>原岗位ID <input type="number" id="t-beforepost"></label></div>
+      <div class="form-row"><label>目标岗位ID <input type="number" id="t-afterpost"></label></div>
+      <div class="form-row"><label>类型 <select id="t-type"><option value="调动">调动</option><option value="晋升">晋升</option></select></label></div>
+      <div class="form-row"><label>调动日期 <input type="date" id="t-date"></label></div>
+      <div class="form-row"><button class="btn" id="add-transfer">提交调动</button></div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchJSON(url, opts){
+      const res = await fetch(url, opts);
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    // pagination state
+    let p_current = 1, p_pageSize = 10, p_total = 0;
+    let t_current = 1, t_pageSize = 10, t_total = 0;
+
+    // 试用期管理：调用后端 `/getPeriods` 接口（GET）
+    let periodData = [];
+    let periodSort = {key: 'id', dir: 'asc'};
+    async function loadPeriods(page=1,pageSize=10){
+      try{
+        p_pageSize = pageSize;
+        const params = new URLSearchParams();
+        params.set('currentPage', page);
+        params.set('pageSize', pageSize);
+        const sname = document.getElementById('p-sname').value; if(sname) params.set('sname', sname);
+        const depart = document.getElementById('p-depart').value; if(depart) params.set('depart_id', depart);
+        const post = document.getElementById('p-post').value; if(post) params.set('post_id', post);
+        const start = document.getElementById('p-start').value; if(start) params.set('startdate', start);
+        const end = document.getElementById('p-end').value; if(end) params.set('enddate', end);
+        const status = document.getElementById('p-status').value; if(status) params.set('status', status);
+        const res = await fetch('/getPeriods?'+params.toString());
+        const json = await res.json();
+        const tbody = document.querySelector('#period-table tbody');
+        tbody.innerHTML = '';
+        periodData = json.periods || json.staffs || json.list || [];
+        renderPeriods(periodData);
+        p_total = json.total || (json.count||0);
+        p_current = page;
+        document.getElementById('p-page-info').textContent = `第 ${p_current} 页 / ${Math.max(1, Math.ceil(p_total / p_pageSize))} 页 (共 ${p_total} 条)`;
+      }catch(e){alert('加载试用期数据失败：'+e.message)}
+    }
+    function renderPeriods(data){
+      const tbody = document.querySelector('#period-table tbody');
+      tbody.innerHTML = '';
+      // client-side sort for current page
+      const key = periodSort.key, dir = periodSort.dir;
+      const copy = Array.from(data);
+      copy.sort((a,b)=>{
+        const va = (a[key]||'')+''; const vb = (b[key]||'')+'';
+        if(!isNaN(Date.parse(va)) && !isNaN(Date.parse(vb))){
+          return dir==='asc'? (new Date(va)-new Date(vb)) : (new Date(vb)-new Date(va));
+        }
+        if(!isNaN(va) && !isNaN(vb)) return dir==='asc'? (va-vb) : (vb-va);
+        return dir==='asc'? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      copy.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${p.id||''}</td><td><span class="ellipsis">${p.sname||''}</span></td><td><span class="ellipsis">${p.post_name||p.pname||''}</span></td><td>${p.startdate1||p.startdate||''}</td><td>${p.enddate1||p.enddate||''}</td><td>${p.status||''}</td><td><button class=\"btn secondary\" onclick=\"periodOp(${p.id},'通过')\">通过</button> <button class=\"btn secondary\" onclick=\"periodOp(${p.id},'不通过')\">不通过</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    async function periodOp(id,status){
+      try{
+        const res = await fetch('/periodOp?id='+encodeURIComponent(id)+"&status="+encodeURIComponent(status),{method:'POST'});
+        const text = await res.text();
+        alert(text);
+        loadPeriods(p_current,p_pageSize);
+      }catch(e){alert('操作失败：'+e.message)}
+    }
+
+    // 调动管理：分页/查询接口 `/getTransfer` 返回 {transfers:[], total: N}
+    let transferData = [];
+    let transferSort = {key: 'id', dir: 'asc'};
+    async function loadTransfers(page=1,pageSize=10){
+      try{
+        t_pageSize = pageSize;
+        const params = new URLSearchParams();
+        params.set('currentPage', page);
+        params.set('pageSize', pageSize);
+        const sname = document.getElementById('t-sname-filter').value; if(sname) params.set('sname', sname);
+        const staff = document.getElementById('t-staff-filter').value; if(staff) params.set('staff_id', staff);
+        const ttype = document.getElementById('t-ttype').value; if(ttype) params.set('ttype', ttype);
+        const res = await fetch('/getTransfer?'+params.toString());
+        const json = await res.json();
+        const tbody = document.querySelector('#transfer-table tbody');
+        tbody.innerHTML = '';
+        transferData = json.transfers || json.list || [];
+        renderTransfers(transferData);
+        t_total = json.total || (json.count||0);
+        t_current = page;
+        document.getElementById('t-page-info').textContent = `第 ${t_current} 页 / ${Math.max(1, Math.ceil(t_total / t_pageSize))} 页 (共 ${t_total} 条)`;
+      }catch(e){alert('加载调动数据失败：'+e.message)}
+    }
+    function renderTransfers(data){
+      const tbody = document.querySelector('#transfer-table tbody');
+      tbody.innerHTML = '';
+      const key = transferSort.key, dir = transferSort.dir;
+      const copy = Array.from(data);
+      copy.sort((a,b)=>{
+        const va = (a[key]||'')+''; const vb = (b[key]||'')+'';
+        if(!isNaN(Date.parse(va)) && !isNaN(Date.parse(vb))){
+          return dir==='asc'? (new Date(va)-new Date(vb)) : (new Date(vb)-new Date(va));
+        }
+        if(!isNaN(va) && !isNaN(vb)) return dir==='asc'? (va-vb) : (vb-va);
+        return dir==='asc'? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      copy.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${t.id||''}</td><td><span class="ellipsis">${t.sname||''}</span></td><td><span class="ellipsis">${t.beforepost_name||''}</span></td><td><span class="ellipsis">${t.afterpost_name||''}</span></td><td>${t.ttype||''}</td><td>${t.tdate1||t.tdate||''}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('refresh-periods').addEventListener('click', ()=>{p_current=1; loadPeriods(p_current, parseInt(document.getElementById('p-pageSize').value||10));});
+    document.getElementById('refresh-transfers').addEventListener('click', ()=>{t_current=1; loadTransfers(t_current, parseInt(document.getElementById('t-pageSize').value||10));});
+    document.getElementById('add-transfer').addEventListener('click', async ()=>{
+      const payload = {
+        staff_id: parseInt(document.getElementById('t-staff-id').value)||null,
+        sname: document.getElementById('t-sname').value || '',
+        beforepost_id: parseInt(document.getElementById('t-beforepost').value)||null,
+        afterpost_id: parseInt(document.getElementById('t-afterpost').value)||null,
+        ttype: document.getElementById('t-type').value,
+        tdate: document.getElementById('t-date').value
+      };
+      try{
+        const res = await fetch('/addTransfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const text = await res.text();
+        alert(text);
+        loadTransfers(t_current,t_pageSize);
+      }catch(e){alert('新增调动失败：'+e.message)}
+    });
+
+    document.getElementById('p-prev').addEventListener('click', ()=>{ if(p_current>1){p_current--; loadPeriods(p_current,p_pageSize);} });
+    document.getElementById('p-next').addEventListener('click', ()=>{ if(p_current* p_pageSize < p_total){p_current++; loadPeriods(p_current,p_pageSize);} });
+    document.getElementById('t-prev').addEventListener('click', ()=>{ if(t_current>1){t_current--; loadTransfers(t_current,t_pageSize);} });
+    document.getElementById('t-next').addEventListener('click', ()=>{ if(t_current* t_pageSize < t_total){t_current++; loadTransfers(t_current,t_pageSize);} });
+
+    // attach column header sorting handlers
+    function toggleSort(state, key){
+      if(state.key === key) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+      else{ state.key = key; state.dir = 'asc'; }
+    }
+    document.querySelectorAll('th.sortable').forEach(th=>{
+      th.addEventListener('click', ()=>{
+        const key = th.getAttribute('data-key');
+        // determine which table this header belongs to
+        const isPeriod = !!th.closest('#period-panel');
+        if(isPeriod){
+          toggleSort(periodSort, key);
+          // update header classes
+          const table = th.closest('table');
+          table.querySelectorAll('th.sortable').forEach(x=>x.classList.remove('sorted','asc','desc'));
+          th.classList.add('sorted', periodSort.dir === 'asc' ? 'asc' : 'desc');
+          renderPeriods(periodData);
+        }else{
+          toggleSort(transferSort, key);
+          const table = th.closest('table');
+          table.querySelectorAll('th.sortable').forEach(x=>x.classList.remove('sorted','asc','desc'));
+          th.classList.add('sorted', transferSort.dir === 'asc' ? 'asc' : 'desc');
+          renderTransfers(transferData);
+        }
+      });
+    });
+
+    // 首次加载
+    loadPeriods(p_current, p_pageSize);
+    loadTransfers(t_current, t_pageSize);
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+/* 全局多行显示样式：保留换行并允许折行 */
+.multiline {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

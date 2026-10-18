@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.WelfarePointsRepository">
+    <!--
+      福利积分 Mapper
+      功能说明：
+      1) 积分记录
+      2) 积分余额/汇总统计
+      3) 积分排行榜（按员工聚合后排序）
+    -->
+
+    <!-- 结果映射：明确指定字段映射关系（避免下划线/大小写导致映射失败） -->
+    <resultMap id="WelfarePointsResultMap" type="WelfarePoints">
+        <id property="id" column="id"/>
+        <result property="staff_id" column="staff_id"/>
+        <result property="points_type" column="points_type"/>
+        <result property="points_value" column="points_value"/>
+        <result property="points_source" column="points_source"/>
+        <result property="source_id" column="source_id"/>
+        <result property="source_desc" column="source_desc"/>
+        <result property="rule_id" column="rule_id"/>
+        <result property="auto_generated" column="auto_generated"/>
+        <result property="expire_date" column="expire_date"/>
+        <result property="used_points" column="used_points"/>
+        <result property="available_points" column="available_points"/>
+        <result property="transaction_type" column="transaction_type"/>
+        <result property="transaction_time" column="transaction_time"/>
+        <result property="operator" column="operator"/>
+        <result property="remark" column="remark"/>
+        <result property="status" column="status"/>
+        <result property="sname" column="sname"/>
+        <result property="sid" column="sid"/>
+        <result property="expire_date1" column="expire_date1"/>
+        <result property="transaction_time1" column="transaction_time1"/>
+        <result property="current_available" column="current_available"/>
+    </resultMap>
+    
+    <!--
+      添加积分记录
+      关键点：transaction_time 允许为空，空则用 NOW()，避免插入失败/时间缺失
+    -->
+    <insert id="addWelfarePoints" parameterType="WelfarePoints">
+        insert into hr_welfare_points (
+            staff_id, points_type, points_value, points_source, source_id, source_desc,
+            expire_date, used_points, available_points, transaction_type, transaction_time, operator, remark, status
+        ) values (
+                     #{staff_id}, #{points_type}, #{points_value}, #{points_source}, #{source_id}, #{source_desc},
+                     #{expire_date}, #{used_points}, #{available_points}, #{transaction_type}, 
+                     COALESCE(#{transaction_time}, NOW()), #{operator}, #{remark}, #{status}
+                 )
+    </insert>
+
+    <!-- 更新积分记录：仅更新非空字段（set + if），避免把字段覆盖成 null -->
+    <update id="updateWelfarePoints" parameterType="WelfarePoints">
+        update hr_welfare_points
+        <set>
+            <if test="points_type != null and points_type != ''">points_type = #{points_type},</if>
+            <if test="points_value != null">points_value = #{points_value},</if>
+            <if test="points_source != null">points_source = #{points_source},</if>
+            <if test="source_desc != null">source_desc = #{source_desc},</if>
+            <if test="expire_date != null">expire_date = #{expire_date},</if>
+            <if test="used_points != null">used_points = #{used_points},</if>
+            <if test="available_points != null">available_points = #{available_points},</if>
+            <if test="transaction_type != null">transaction_type = #{transaction_type},</if>
+            <if test="operator != null">operator = #{operator},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <!--
+      根据ID查询积分记录（包含员工姓名/身份证号 + 格式化时间字段）
+      current_available：通过子查询计算“当前余额”= earned 总和 - used 总和（仅统计 status=1 的有效记录）
+    -->
+    <select id="selectWelfarePointsById" resultMap="WelfarePointsResultMap" parameterType="Integer">
+        select wp.id, wp.staff_id, wp.points_type, wp.points_value, wp.points_source, wp.source_id, wp.source_desc,
+               wp.rule_id, wp.auto_generated, wp.expire_date, wp.used_points, wp.available_points,
+               wp.transaction_type, wp.transaction_time, wp.operator, wp.remark, wp.status,
+               s.sname, s.sid,
+               DATE_FORMAT(wp.expire_date,'%Y-%m-%d') as expire_date1,
+               DATE_FORMAT(wp.transaction_time,'%Y-%m-%d %H:%i:%s') as transaction_time1,
+               COALESCE((
+                   SELECT COALESCE(
+                       SUM(CASE WHEN wp2.transaction_type = 'EARN' AND wp2.status = 1 THEN wp2.points_value ELSE 0 END) - 
+                       SUM(CASE WHEN wp2.transaction_type = 'USE' AND wp2.status = 1 THEN COALESCE(wp2.used_points, wp2.points_value, 0) ELSE 0 END),
+                       0
+                   )
+                   FROM hr_welfare_points wp2
+                   WHERE wp2.staff_id = wp.staff_id AND wp2.status = 1
+               ), 0) as current_available
+        from hr_welfare_points wp
+                 left join hr_employee s on wp.staff_id = s.id
+        where wp.id = #{id} and wp.status = 1
+    </select>
+
+    <!--
+      根据员工ID查询积分列表（按时间倒序）
+      用途：员工个人积分明细页
+      current_available：同上，用于页面直接展示余额
+    -->
+    <select id="selectWelfarePointsByStaffId" resultMap="WelfarePointsResultMap" parameterType="Integer">
+        select wp.id, wp.staff_id, wp.points_type, wp.points_value, wp.points_source, wp.source_id, wp.source_desc,
+               wp.rule_id, wp.auto_generated, wp.expire_date, wp.used_points, wp.available_points,
+               wp.transaction_type, wp.transaction_time, wp.operator, wp.remark, wp.status,
+               s.sname, s.sid,
+               DATE_FORMAT(wp.expire_date,'%Y-%m-%d') as expire_date1,
+               DATE_FORMAT(wp.transaction_time,'%Y-%m-%d %H:%i:%s') as transaction_time1,
+               COALESCE((
+                   SELECT COALESCE(
+                       SUM(CASE WHEN wp2.transaction_type = 'EARN' AND wp2.status = 1 THEN wp2.points_value ELSE 0 END) - 
+                       SUM(CASE WHEN wp2.transaction_type = 'USE' AND wp2.status = 1 THEN COALESCE(wp2.used_points, wp2.points_value, 0) ELSE 0 END),
+                       0
+                   )
+                   FROM hr_welfare_points wp2
+                   WHERE wp2.staff_id = wp.staff_id AND wp2.status = 1
+               ), 0) as current_available
+        from hr_welfare_points wp
+                 left join hr_employee s on wp.staff_id = s.id
+        where wp.staff_id = #{staff_id} and wp.status = 1
+        order by wp.transaction_time desc
+    </select>
+
+    <!--
+      分页查询积分记录
+      约定：act == 'byPage' 时才追加 limit；用于“列表页”
+    -->
+    <select id="selectWelfarePointsByPage" resultMap="WelfarePointsResultMap" parameterType="WelfarePoints">
+        select wp.id, wp.staff_id, wp.points_type, wp.points_value, wp.points_source, wp.source_id, wp.source_desc,
+               wp.rule_id, wp.auto_generated, wp.expire_date, wp.used_points, wp.available_points,
+               wp.transaction_type, wp.transaction_time, wp.operator, wp.remark, wp.status,
+               s.sname, s.sid,
+               DATE_FORMAT(wp.expire_date,'%Y-%m-%d') as expire_date1,
+               DATE_FORMAT(wp.transaction_time,'%Y-%m-%d %H:%i:%s') as transaction_time1,
+               COALESCE((
+                   SELECT COALESCE(
+                       SUM(CASE WHEN wp2.transaction_type = 'EARN' AND wp2.status = 1 THEN wp2.points_value ELSE 0 END) - 
+                       SUM(CASE WHEN wp2.transaction_type = 'USE' AND wp2.status = 1 THEN COALESCE(wp2.used_points, wp2.points_value, 0) ELSE 0 END),
+                       0
+                   )
+                   FROM hr_welfare_points wp2
+                   WHERE wp2.staff_id = wp.staff_id AND wp2.status = 1
+               ), 0) as current_available
+        from hr_welfare_points wp
+        left join hr_employee s on wp.staff_id = s.id
+        where wp.status = 1
+        <if test="act == 'byPage'">
+            order by wp.transaction_time desc
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+
+    <!--
+      条件查询积分记录
+      支持条件：staff_id / points_type / transaction_type / sname（模糊）
+      约定：act == 'byPage' 时才追加 limit；total 统计由 countWelfarePoints 完成
+    -->
+    <select id="selectWelfarePointsByCon" resultMap="WelfarePointsResultMap" parameterType="WelfarePoints">
+        select wp.id, wp.staff_id, wp.points_type, wp.points_value, wp.points_source, wp.source_id, wp.source_desc,
+               wp.rule_id, wp.auto_generated, wp.expire_date, wp.used_points, wp.available_points,
+               wp.transaction_type, wp.transaction_time, wp.operator, wp.remark, wp.status,
+               s.sname, s.sid,
+               DATE_FORMAT(wp.expire_date,'%Y-%m-%d') as expire_date1,
+               DATE_FORMAT(wp.transaction_time,'%Y-%m-%d %H:%i:%s') as transaction_time1,
+               COALESCE((
+                   SELECT COALESCE(
+                       SUM(CASE WHEN wp2.transaction_type = 'EARN' AND wp2.status = 1 THEN wp2.points_value ELSE 0 END) - 
+                       SUM(CASE WHEN wp2.transaction_type = 'USE' AND wp2.status = 1 THEN COALESCE(wp2.used_points, wp2.points_value, 0) ELSE 0 END),
+                       0
+                   )
+                   FROM hr_welfare_points wp2
+                   WHERE wp2.staff_id = wp.staff_id AND wp2.status = 1
+               ), 0) as current_available
+        from hr_welfare_points wp
+        left join hr_employee s on wp.staff_id = s.id
+        where wp.status = 1
+        <if test="staff_id != null and staff_id != 0">
+            and wp.staff_id = #{staff_id}
+        </if>
+        <if test="points_type != null and points_type != ''">
+            and wp.points_type = #{points_type}
+        </if>
+        <if test="transaction_type != null and transaction_type != ''">
+            and wp.transaction_type = #{transaction_type}
+        </if>
+        <if test="sname != null and sname != ''">
+            and s.sname like concat('%',#{sname},'%')
+        </if>
+        <if test="act == 'byPage'">
+            order by wp.transaction_time desc
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+
+    <!--
+      查询员工积分汇总（earned/used/balance）
+      - earned：transaction_type='EARN' 的 points_value 求和
+      - used：transaction_type='USE' 的 used_points（为空则回退 points_value）
+      - current_available = earned - used
+    -->
+    <select id="selectPointsSummary" resultType="map" parameterType="Integer">
+        select
+            staff_id,
+            COALESCE(SUM(CASE WHEN transaction_type = 'EARN' AND status = 1 THEN points_value ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN transaction_type = 'USE' AND status = 1 THEN COALESCE(used_points, points_value, 0) ELSE 0 END), 0) as total_used,
+            COALESCE(
+                SUM(CASE WHEN transaction_type = 'EARN' AND status = 1 THEN points_value ELSE 0 END) - 
+                SUM(CASE WHEN transaction_type = 'USE' AND status = 1 THEN COALESCE(used_points, points_value, 0) ELSE 0 END),
+                0
+            ) as current_available
+        from hr_welfare_points
+        where staff_id = #{staff_id} and status = 1
+        group by staff_id
+    </select>
+
+    <!-- 删除积分记录（逻辑删除）：status=0 表示无效，不再参与统计 -->
+    <update id="deleteWelfarePoints" parameterType="Integer">
+        update hr_welfare_points
+        set status = 0
+        where id = #{id}
+    </update>
+
+    <!-- 统计积分记录数量：配合条件查询分页使用（与 selectWelfarePointsByCon 条件保持一致） -->
+    <select id="countWelfarePoints" resultType="int" parameterType="WelfarePoints">
+        select count(*)
+        from hr_welfare_points wp
+        left join hr_employee s on wp.staff_id = s.id
+        where wp.status = 1
+        <if test="staff_id != null and staff_id != 0">
+            and wp.staff_id = #{staff_id}
+        </if>
+        <if test="points_type != null and points_type != ''">
+            and wp.points_type = #{points_type}
+        </if>
+        <if test="transaction_type != null and transaction_type != ''">
+            and wp.transaction_type = #{transaction_type}
+        </if>
+        <if test="sname != null and sname != ''">
+            and s.sname like concat('%',#{sname},'%')
+        </if>
+    </select>
+
+    <!--
+      积分排行榜查询（按员工聚合）
+      - startDate：可选，限制统计区间（transaction_time >= startDate）
+      - departId：可选，限制部门
+      - current_balance：按 EARN-USE 计算余额，用于排序
+      - HAVING total_earned > 0：过滤从未获得过积分的员工
+    -->
+    <select id="selectPointsRanking" resultType="map" parameterType="map">
+        SELECT 
+            s.id as staff_id,
+            s.sname as staff_name,
+            s.depart_id,
+            d.dname as depart_name,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'EARN' AND wp.status = 1 THEN wp.points_value ELSE 0 END), 0) as total_earned,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'USE' AND wp.status = 1 THEN COALESCE(wp.used_points, wp.points_value, 0) ELSE 0 END), 0) as total_used,
+            COALESCE(SUM(CASE WHEN wp.transaction_type = 'EARN' AND wp.status = 1 THEN wp.points_value ELSE 0 END) - 
+                     SUM(CASE WHEN wp.transaction_type = 'USE' AND wp.status = 1 THEN COALESCE(wp.used_points, wp.points_value, 0) ELSE 0 END), 0) as current_balance,
+            MAX(CASE WHEN wp.status = 1 THEN wp.transaction_time END) as last_earn_time
+        FROM hr_employee s
+        LEFT JOIN sys_department d ON s.depart_id = d.id
+        LEFT JOIN hr_welfare_points wp ON s.id = wp.staff_id
+            <if test="startDate != null and startDate != ''">
+                AND wp.transaction_time &gt;= #{startDate}
+            </if>
+        WHERE 1=1
+        <if test="departId != null">
+            AND s.depart_id = #{departId}
+        </if>
+        GROUP BY s.id, s.sname, s.depart_id, d.dname
+        HAVING total_earned > 0
+        ORDER BY current_balance DESC, total_earned DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!--
+      积分历史序列查询
+      用途：趋势图/画像分析输入（只取 EARN 且有效记录，按时间正序）
+    -->
+    <select id="selectPointsHistory" resultType="map" parameterType="Integer">
+        SELECT 
+            DATE_FORMAT(transaction_time, '%Y-%m-%d') as date,
+            points_value,
+            transaction_type,
+            points_source,
+            auto_generated
+        FROM hr_welfare_points
+        WHERE staff_id = #{staff_id} AND status = 1 AND transaction_type = 'EARN'
+        ORDER BY transaction_time ASC
+    </select>
+
+</mapper>
+

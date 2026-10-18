@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ch.personmis.repository.StaffRepository">
+    <!--
+      员工 Mapper（包含员工 + 试用期 + 调动相关 SQL）
+      功能说明：
+      - 员工基础信息
+      - 试用期管理查询/操作
+      - 调动记录与岗位更新
+    -->
+
+    <!-- 调动员工结果映射 -->
+    <resultMap id="TransferResultMap" type="Transfer">
+        <id property="id" column="id"/>
+        <result property="staff_id" column="staff_id"/>
+        <result property="sname" column="sname"/>
+        <result property="ttype" column="ttype"/>
+        <result property="beforepost_id" column="beforepost_id"/>
+        <result property="afterpost_id" column="afterpost_id"/>
+        <result property="beforepost_name" column="beforepost_name"/>
+        <result property="afterpost_name" column="afterpost_name"/>
+        <result property="tdate1" column="tdate1"/>
+        <result property="opdate1" column="opdate1"/>
+    </resultMap>
+    
+    <!-- 录入员工：当 startdate 不为空时，默认 status 写入“正常”（兼容试用期字段场景） -->
+    <insert id="addStaff"  parameterType="Staff">
+        insert into hr_employee (
+        id, sname, sex, birthday, sid,
+        depart_id, post_id, entrydate, joinworkdate, workform, staffsource,
+        politicalstatus, nation, nativeplace, stel, semail, skill_tags, sheight,
+        bloodtype, maritalstatus, registeredresidence, education, degree, university,
+        major, graduationdate, startdate, enddate, status, peroidopdate, user_id
+        ) values (
+        null, #{sname}, #{sex}, #{birthday}, #{sid},
+        #{depart_id}, #{post_id}, #{entrydate}, #{joinworkdate}, #{workform}, #{staffsource},
+        #{politicalstatus}, #{nation}, #{nativeplace}, #{stel}, #{semail}, #{skill_tags}, #{sheight},
+        #{bloodtype}, #{maritalstatus}, #{registeredresidence}, #{education}, #{degree}, #{university},
+        #{major}, #{graduationdate}, #{startdate}, #{enddate}
+        <if test="startdate != null">
+            , '正常'
+        </if>
+        <if test="startdate == null">
+            , #{status}
+        </if>
+        , #{peroidopdate}, #{user_id}
+        )
+    </insert>
+    <!-- 查询所有员工（可分页） -->
+    <select id="selectStaff" resultType="Staff" parameterType="StaffByCon">
+        select * from hr_employee s, sys_department d, sys_post p where s.depart_id = d.id and s.post_id = p.id
+        <if test="act == 'byPage'" >
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+    <!-- 条件查询员工：按姓名/部门过滤（可分页） -->
+    <select id="selectStaffByCon" resultType="Staff" parameterType="StaffByCon">
+        select * from hr_employee s, sys_department d, sys_post p where s.depart_id = d.id and s.post_id = p.id
+        <if test="sname != null and sname != ''">
+            and s.sname like concat('%',#{sname},'%')
+        </if>
+        <if test="depart_id != 0">
+            and s.depart_id = #{depart_id}
+        </if>
+        <if test="act == 'byPage'" >
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+
+    <!-- 查询一个员工信息：join 部门/岗位，并输出格式化日期字段（xxx1）用于前端展示 -->
+    <select id="selectAStaff" resultType="Staff" parameterType="Integer">
+        select s.*, d.dname, p.pname,
+               DATE_FORMAT(s.birthday,'%Y-%m-%d') as birthday1,
+               DATE_FORMAT(s.entrydate,'%Y-%m-%d') as entrydate1,
+               DATE_FORMAT(s.joinworkdate,'%Y-%m-%d') as joinworkdate1,
+               DATE_FORMAT(s.graduationdate,'%Y-%m-%d') as graduationdate1,
+               DATE_FORMAT(s.startdate,'%Y-%m-%d') as startdate1,
+               DATE_FORMAT(s.enddate,'%Y-%m-%d') as enddate1
+        from hr_employee s
+                 left join sys_department d on s.depart_id = d.id
+                 left join sys_post p on s.post_id = p.id
+        where s.id = #{id};
+    </select>
+    <!-- 修改一个员工信息：注意 depart_id/post_id 在数据库侧通常为非空约束 -->
+    <update id="updateStaff" parameterType="Staff">
+        update hr_employee
+        <set>
+            sname = #{sname},
+            sex =  #{sex},
+            birthday = #{birthday},
+            sid = #{sid},
+            depart_id =  #{depart_id},
+            post_id = #{post_id},
+            entrydate =  #{entrydate},
+            joinworkdate = #{joinworkdate},
+            workform =  #{workform},
+            staffsource = #{staffsource},
+            politicalstatus =  #{politicalstatus},
+            nation = #{nation},
+            nativeplace =  #{nativeplace},
+            stel = #{stel},
+            semail =  #{semail},
+            skill_tags = #{skill_tags},
+            sheight = #{sheight},
+            bloodtype =  #{bloodtype},
+            maritalstatus = #{maritalstatus},
+            registeredresidence =  #{registeredresidence},
+            education = #{education},
+            degree =  #{degree},
+            university = #{university},
+            major =  #{major},
+            graduationdate = #{graduationdate},
+            startdate = #{startdate},
+            enddate = #{enddate}
+            <if test="user_id != null">, user_id = #{user_id}</if>
+        </set>
+        where id = #{id}
+    </update>
+    <!-- 试用期管理查询：筛选存在 startdate/enddate 或 status != '正常' 的员工（可分页） -->
+    <select id="selectPeriodStaff" resultType="Staff">
+        select s.id, s.sname, s.sex, s.birthday, s.sid, s.depart_id, s.post_id, s.entrydate, s.joinworkdate,
+               s.workform, s.staffsource, s.politicalstatus, s.nation, s.nativeplace, s.stel, s.semail,
+               s.skill_tags, s.sheight, s.bloodtype, s.maritalstatus, s.registeredresidence, s.education,
+               s.degree, s.university, s.major, s.graduationdate, s.startdate, s.enddate, s.peroidopdate,
+               COALESCE(s.status, '正常') as status, s.user_id,
+               d.dname, p.pname,
+               DATE_FORMAT(s.startdate,'%Y-%m-%d') as startdate1,
+               DATE_FORMAT(s.enddate,'%Y-%m-%d') as enddate1
+        from hr_employee s
+        left join sys_department d on s.depart_id = d.id
+        left join sys_post p on s.post_id = p.id
+        where (s.startdate IS NOT NULL or s.enddate IS NOT NULL)
+           or (s.status IS NOT NULL and s.status != '正常')
+        <if test="act == 'byPage'" >
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+    <!-- 条件查询试用期管理：支持姓名/部门/岗位/状态/日期范围过滤（可分页） -->
+    <select id="selectPeriodStaffCon" resultType="Staff">
+        select s.id, s.sname, s.sex, s.birthday, s.sid, s.depart_id, s.post_id, s.entrydate, s.joinworkdate,
+               s.workform, s.staffsource, s.politicalstatus, s.nation, s.nativeplace, s.stel, s.semail,
+               s.skill_tags, s.sheight, s.bloodtype, s.maritalstatus, s.registeredresidence, s.education,
+               s.degree, s.university, s.major, s.graduationdate, s.startdate, s.enddate, s.peroidopdate,
+               COALESCE(s.status, '正常') as status, s.user_id,
+               d.dname, p.pname,
+               DATE_FORMAT(s.startdate,'%Y-%m-%d') as startdate1,
+               DATE_FORMAT(s.enddate,'%Y-%m-%d') as enddate1
+        from hr_employee s
+        left join sys_department d on s.depart_id = d.id
+        left join sys_post p on s.post_id = p.id
+        where ((s.startdate IS NOT NULL or s.enddate IS NOT NULL)
+           or (s.status IS NOT NULL and s.status != '正常'))
+        <if test="sname != null and sname != ''">
+            and s.sname like concat('%',#{sname},'%')
+        </if>
+        <if test="depart_id != null and depart_id != 0">
+            and s.depart_id = #{depart_id}
+        </if>
+        <if test="post_id != null and post_id != 0">
+            and s.post_id = #{post_id}
+        </if>
+        <if test="status != null and status != '' and status != '全部'">
+            and COALESCE(s.status, '正常') = #{status}
+        </if>
+        <if test="startdate != null and startdate != ''">
+            and s.startdate &gt;= #{startdate}
+        </if>
+        <if test="enddate != null and enddate != ''">
+            and s.enddate &lt;= #{enddate}
+        </if>
+        <if test="act == 'byPage'" >
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+    <!-- 试用期管理操作：更新 status，并记录操作时间 peroidopdate -->
+    <update id="periodOp">
+        update hr_employee
+        <set>
+            status = #{status},
+            peroidopdate = now()
+        </set>
+        where id=#{id}
+    </update>
+    
+    <!-- 设置试用期结束日期：同时把状态置为“转正”，并记录操作时间 -->
+    <update id="setEndDate">
+        update hr_employee
+        <set>
+            enddate = #{enddate},
+            status = '转正',
+            peroidopdate = now()
+        </set>
+        where id=#{id}
+    </update>
+    
+    <!-- 查询关联员工：用于删除前校验（离职/调动有关联时不允许删除） -->
+    <select id="selectAssociateStaff" resultType="map" parameterType="Integer">
+        SELECT DISTINCT q.id, t.id from quit q, transfer t where
+            q.staff_id = #{id} or t.staff_id = #{id}
+    </select>
+    <!-- 删除员工（物理删除） -->
+    <delete id="deleteStaff" parameterType="Integer">
+        delete from hr_employee where id = #{id}
+    </delete>
+    <!-- 调动相关 SQL（从 TransferMapper 合并） -->
+    <!-- 查询调动一个员工 -->
+    <select id="getBeforePost" resultMap="TransferResultMap">
+        select s.sname as sname, 
+               COALESCE(s.post_id, 0) as beforepost_id,
+               COALESCE(p.pname, '未分配岗位') as beforepost_name
+        from hr_employee s
+        left join sys_post p on s.post_id = p.id
+        where s.id = #{id}
+    </select>
+    <!-- 更新调动员工岗位：把员工表 post_id 更新为调动后的岗位 -->
+    <update id="updateStaffPost" parameterType="Transfer">
+        update hr_employee
+        <set>
+            post_id = #{afterpost_id} where id = #{staff_id}
+        </set>
+    </update>
+    <!-- 记录调动员工：写入 transfer 调动记录表 -->
+    <insert id="addTransferStaff"  parameterType="Transfer">
+        insert into transfer values(null,#{staff_id},#{sname},#{beforepost_id},#{afterpost_id},#{ttype},#{tdate},now())
+    </insert>
+    <!-- 查询调动员工：join 前/后岗位名称，并输出格式化日期字段（可分页） -->
+    <select id="selectTransfer" resultMap="TransferResultMap" parameterType="Transfer">
+        select t.id, t.staff_id, t.sname, t.ttype,
+        t.beforepost_id, t.afterpost_id,
+        COALESCE(bp.pname, '未知岗位') as beforepost_name,
+        COALESCE(ap.pname, '未知岗位') as afterpost_name,
+        DATE_FORMAT(t.tdate,'%Y-%m-%d') as tdate1,
+        DATE_FORMAT(t.opdate,'%Y-%m-%d') as opdate1
+        from transfer t
+        left join sys_post bp on t.beforepost_id = bp.id
+        left join sys_post ap on t.afterpost_id = ap.id
+        order by t.tdate desc, t.opdate desc
+        <if test="act == 'byPage'" >
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+    <!-- 条件查询调动员工：按姓名/员工ID/调动类型/日期范围过滤（可分页） -->
+    <select id="selectTransfersByCon" resultMap="TransferResultMap" parameterType="Transfer">
+        select t.id, t.staff_id, t.sname, t.ttype,
+        t.beforepost_id, t.afterpost_id,
+        COALESCE(bp.pname, '未知岗位') as beforepost_name,
+        COALESCE(ap.pname, '未知岗位') as afterpost_name,
+        DATE_FORMAT(t.tdate,'%Y-%m-%d') as tdate1,
+        DATE_FORMAT(t.opdate,'%Y-%m-%d') as opdate1
+        from transfer t
+        left join sys_post bp on t.beforepost_id = bp.id
+        left join sys_post ap on t.afterpost_id = ap.id
+        where 1=1
+        <if test="sname != null and sname != ''">
+            and t.sname like concat('%',#{sname},'%')
+        </if>
+        <if test="staff_id != null and staff_id != 0">
+            and t.staff_id = #{staff_id}
+        </if>
+        <if test="ttype != null and ttype != ''">
+            and t.ttype = #{ttype}
+        </if>
+        <if test="startdate != null and enddate != null" >
+            and date(t.tdate) between #{startdate} and #{enddate}
+        </if>
+        order by t.tdate desc, t.opdate desc
+        <if test="act == 'byPage'" >
+            limit #{startIndex}, #{pageSize}
+        </if>
+    </select>
+</mapper>
